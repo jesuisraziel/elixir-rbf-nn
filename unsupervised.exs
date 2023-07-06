@@ -103,14 +103,15 @@ defmodule KNeighbors do
   end
 
   def find_deviations(centroids) when is_list(centroids) do
-    cen_mins = for cen <- centroids, do: (
+    cen_mins = for cen <- centroids, do: ( 
       List.delete(centroids, cen)
       |> Enum.map(fn cen_2 -> Utils.euclidean_distance(cen, cen_2) end)
       |> Enum.sort
       |> Enum.take(2)
       |> List.to_tuple
     )
-    #cen_mins |> IO.inspect
+    IO.puts("Got here.")
+    cen_mins |> IO.inspect
     for min <- cen_mins, do: :math.sqrt(elem(min,0)*elem(min,1))
   end
 end
@@ -137,13 +138,16 @@ defmodule OutputNeuron do
   end
 
   def activate(neuron, input)  do
-    VecOps.dot(neuron.weights, input) |> (Kernel.+neuron.bias) |> Utils.sigmoid
+    VecOps.dot(neuron.weights, input) |> (Kernel.+neuron.bias) |> Utils.linear
   end
 
   def update_weights(neuron, input, exp_out, act_out, rate) do
     delta = for x <- input, do: rate * (exp_out-act_out) * x
     nws = VecOps.add(neuron.weights, delta)
-    %{neuron | weights: nws}
+    updated_weights = %{neuron | weights: nws}
+    bias_adjustment = rate * (exp_out - act_out) * 1
+    new_bias = neuron.bias + bias_adjustment
+    %{neuron | bias: new_bias}
   end
 end
 
@@ -151,12 +155,12 @@ defmodule RadialNet do
   defstruct [:radial_neurons, :output_neurons, learning_rate: 0.07]
 
   def init_radial_part(dataset, cluster_num) do
-    clusters = KMeans.run(dataset,cluster_num)
+    clusters = KMeans.run(dataset,cluster_num) |> IO.inspect
     KNeighbors.run(clusters.centroids)
   end
 
   def init(radial_part, output_num) do
-    num_clusters = hd(radial_part) |> elem(0) |> length |> IO.inspect
+    num_clusters = hd(radial_part) |> elem(0) |> length # |> IO.inspect
     radial_neurons = for id <- 0..length(radial_part)-1, do: (
     info = Enum.at(radial_part, id)
     %RadialNeuron{
@@ -168,7 +172,79 @@ defmodule RadialNet do
     output_neurons = for n <- 0..output_num-1, do: OutputNeuron.init(n,num_clusters)
     %RadialNet{radial_neurons: radial_neurons, output_neurons: output_neurons}
   end
+
+  def predict(net, input) do 
+    hidden_layer_output = for neuron <- net.radial_neurons, do: (
+      RadialNeuron.activate(neuron, input)
+    )
+    for neuron <- net.output_neurons, do: OutputNeuron.activate(neuron, input)
+  end
+
+  def mean_square_error(net, dataset, example_count) do
+    outputs = for example <- dataset, do: RadialNet.predict(net, elem(example,0))
+    labels = Enum.map(dataset, fn example -> elem(example,1) end)
+    labeled_outputs = Enum.zip(labels,outputs) 
+    squared_errors = for {expected_values,actual_values} <- labeled_outputs, do: (
+    squared_error = Enum.zip(expected_values,actual_values) 
+                    |> Enum.map(fn {expected,actual} -> :math.pow(expected-actual,2) end) 
+                    |> Enum.reduce(0, fn squared_value_error, acc -> squared_value_error + acc end) 
+                    |> (Kernel./2)
+    )
+    Enum.reduce(squared_errors, 0, fn error, acc -> (error+acc) end) 
+    |> (Kernel./example_count)
+  end
+
+  def train_on_dataset(net, labeled_dataset,example_count, epochs) do
+    if(epochs == 0) do
+      net
+    else
+      mse = RadialNet.mean_square_error(net, labeled_dataset, example_count) |> IO.inspect
+      updated_net = train_on_dataset(net, labeled_dataset)
+      shuffled_dataset = Enum.shuffle(labeled_dataset)
+      train_on_dataset(updated_net, shuffled_dataset, example_count, epochs-1)
+    end
+  end
+
+  def train_on_dataset(net, labeled_dataset) when labeled_dataset == [] do
+    net
+  end 
+   
+  def train_on_dataset(net, labeled_dataset) do
+    [example | remaining_data] = labeled_dataset
+    updated_net = train_on_example(net, example)
+    train_on_dataset(updated_net,remaining_data)
+  end 
+  
+  def train_on_example(net, labeled_input) do
+    {input, label} = labeled_input
+    output = RadialNet.predict(net, input)
+    to_zip = [net.output_neurons,label,output]
+    zipped_outputs = List.zip(to_zip)
+    updated_neurons = for {neuron, expected, actual} <- zipped_outputs, do: (
+      OutputNeuron.update_weights(neuron, input, expected, actual, net.learning_rate)
+    )
+    %{net | output_neurons: updated_neurons}
+  end
+
 end
 
-dataset = [[1,2,1],[2,2,2],[3,2,1],[0,0,0],[2,1,3],[4,5,2],[2,54,2],[1,1,-6],[-2,-2,-7]]
-RadialNet.init_radial_part(dataset, 3) |> RadialNet.init(2)  |> IO.inspect
+labeled_dataset = [
+  {[1,2,0],[1,1]},
+  {[1,0,0],[1,0]},
+  {[0,2,0],[0,0]},
+  {[1,0,2],[1,1]},
+  {[0,2,2],[0,1]},
+  {[1,0,1],[1,0]},
+  {[1,2,0],[1,1]},
+  {[2,2,2],[0,1]},
+  {[1,1,1],[1,0]},
+  {[2,2,1],[1,1]},
+  {[2,2,0],[0,1]},
+  {[0,0,1],[1,0]},
+  {[0,0,0],[0,0]},
+  {[0,0,2],[0,1]},
+]
+
+dataset = Enum.map(labeled_dataset, fn item -> elem(item,0) end) |> IO.inspect
+nn = RadialNet.init_radial_part(dataset, 4) |> RadialNet.init(2) |>  IO.inspect
+trained_net = RadialNet.train_on_dataset(nn,labeled_dataset,length(labeled_dataset),500) |> IO.inspect
