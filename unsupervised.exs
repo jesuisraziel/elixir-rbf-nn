@@ -1,4 +1,25 @@
 defmodule Utils do
+  def read_csv(path) do
+    File.stream!(path) |> Enum.to_list
+  end
+
+  def parse_csv(list) when list == [] do
+    list
+  end
+
+  def parse_csv(list) do
+    [input, label | rest] = list
+    parsed_input = input 
+                    |> String.replace("\n", "")                
+                    |> String.split(",")
+                    |> Enum.map(fn elem -> String.to_integer(elem) end)
+    parsed_label = label 
+                    |> String.replace("\n", "")                
+                    |> String.split(",")
+                    |> Enum.map(fn elem -> String.to_integer(elem) end)
+
+    [{parsed_input, parsed_label}|parse_csv(rest)]
+  end
   
   def random_float(lower,upper) do
     :rand.uniform() * (lower - upper) + upper
@@ -43,6 +64,8 @@ defmodule VecOps do
   def scale(a,b) when is_list(a) do
     Enum.map(a, fn x -> x * b end)
   end
+
+  
 end
 
 defmodule KMeans do
@@ -160,7 +183,6 @@ defmodule RadialNet do
 
   def init(radial_part, output_num) do
     radial_part |> IO.inspect
-    num_inputs = hd(radial_part) |> elem(0) |> length |> IO.inspect
     num_clusters = length(radial_part)
     radial_neurons = for id <- 0..num_clusters-1, do: (
     info = Enum.at(radial_part, id)
@@ -221,12 +243,10 @@ defmodule RadialNet do
   end 
   
   def train_on_example(net, labeled_input) do
-    #IO.inspect(labeled_input)
     {input, label} = labeled_input
     hidden_layer_output = activate_hidden_layer(net, input)
     output = RadialNet.predict(net, input)
     to_zip = [net.output_neurons,label,output]
-    #IO.inspect(to_zip)
     zipped_outputs = List.zip(to_zip)
     updated_neurons = for {neuron, expected, actual} <- zipped_outputs, do: (
       OutputNeuron.update_weights(neuron, hidden_layer_output, expected, actual, net.learning_rate)
@@ -234,25 +254,22 @@ defmodule RadialNet do
     %{net | output_neurons: updated_neurons}
   end
 
+  def calculate_accuracy(net, labeled_dataset) do
+    data = Enum.map(labeled_dataset, fn item -> elem(item,0) end) 
+    labels = Enum.map(labeled_dataset, fn item -> elem(item,1) end)
+    outputs = Enum.map(data, fn datum -> RadialNet.predict(net, datum) end) 
+    zipped_outputs = Enum.zip(labels,outputs) |> IO.inspect 
+    hits = Enum.reduce(zipped_outputs, 0, fn {exp, act}, acc -> if exp == act do acc + 1 else acc + 0 end end)
+    hits/length(labeled_dataset)
+  end
+
 end
 
-labeled_dataset = [
-  {[1,2,0],[1,1]},
-  {[1,0,0],[1,0]},
-  {[0,2,0],[0,0]},
-  {[1,0,2],[1,1]},
-  {[0,2,2],[0,1]},
-  {[1,0,1],[1,0]},
-  {[1,2,0],[1,1]},
-  {[2,2,2],[0,1]},
-  {[1,1,1],[1,0]},
-  {[2,2,1],[1,1]},
-  {[2,2,0],[0,1]},
-  {[0,0,1],[1,0]},
-  {[0,0,0],[0,0]},
-  {[0,0,2],[0,1]},
-]
+
+dataset_path = "dataset.csv"
+labeled_dataset = Utils.read_csv(dataset_path) |> Utils.parse_csv
 
 dataset = Enum.map(labeled_dataset, fn item -> elem(item,0) end)
-nn = RadialNet.init_radial_part(dataset, 4) |> RadialNet.init(2) |>  IO.inspect
-RadialNet.train_on_dataset(nn,labeled_dataset,length(labeled_dataset),500)
+nn = RadialNet.init_radial_part(dataset, 6) |> RadialNet.init(6) |>  IO.inspect
+RadialNet.train_on_dataset(nn,labeled_dataset,length(labeled_dataset),1000)
+|> RadialNet.calculate_accuracy( labeled_dataset) |> IO.inspect
