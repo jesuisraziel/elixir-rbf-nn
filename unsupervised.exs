@@ -1,4 +1,4 @@
-defmodule Utils do
+defmodule FileUtils do
   def read_csv(path) do
     File.stream!(path) |> Enum.to_list
   end
@@ -9,38 +9,38 @@ defmodule Utils do
 
   def parse_csv(list) do
     [input, label | rest] = list
-    parsed_input = input 
-                    |> String.replace("\n", "")                
+    parsed_input = input
+                    |> String.replace("\n", "")
                     |> String.split(",")
                     |> Enum.map(fn elem -> String.to_integer(elem) end)
-    parsed_label = label 
-                    |> String.replace("\n", "")                
+    parsed_label = label
+                    |> String.replace("\n", "")
                     |> String.split(",")
                     |> Enum.map(fn elem -> String.to_integer(elem) end)
 
     [{parsed_input, parsed_label}|parse_csv(rest)]
   end
-  
+end
+
+defmodule MathUtils do
   def random_float(lower,upper) do
     :rand.uniform() * (lower - upper) + upper
   end
 
-  def euclidean_distance(a,b) when length(a) == length(b) do 
+  def euclidean_distance(a,b) when length(a) == length(b) do
     Enum.zip(a,b)
-    |> Enum.reduce(0,fn {an, bn}, acc -> :math.pow(bn-an,2)+acc end) 
+    |> Enum.reduce(0,fn {an, bn}, acc -> :math.pow(bn-an,2)+acc end)
     |> :math.sqrt
   end
+end
 
-  def add(list1, list2) when is_list(list1) and is_list(list2) do
-    Enum.zip(list1, list2) |> Enum.map(fn {x,y} -> x+y end)
-  end
-
+defmodule NetUtils do
   def radial_factor(input, centroid, deviation) when (length(input) == length(centroid)) and is_number(deviation) do
-    Utils.euclidean_distance(centroid, input)/deviation
+    MathUtils.euclidean_distance(centroid, input)/deviation
   end
 
   def gaussian(input, centroid, deviation) do
-    radius = radial_factor(input, centroid, deviation)
+    radius = NetUtils.radial_factor(input, centroid, deviation)
     numerator = -(:math.pow(radius, 2))
     denominator = 2
     :math.exp(numerator/denominator)
@@ -49,7 +49,6 @@ defmodule Utils do
   def linear(input) do
     input
   end
-
 end
 
 defmodule VecOps do
@@ -64,14 +63,12 @@ defmodule VecOps do
   def scale(a,b) when is_list(a) do
     Enum.map(a, fn x -> x * b end)
   end
-
-  
 end
 
 defmodule KMeans do
 
   def run(dataset,k) do
-    initial_centroids = init_centroids(dataset, k) 
+    initial_centroids = init_centroids(dataset, k)
     initial_clusters = assign_clusters(dataset, initial_centroids)
     run(dataset, initial_centroids,initial_clusters, 0)
   end
@@ -80,24 +77,24 @@ defmodule KMeans do
     if(count < 1000) do
       new_centroids = update_centroids(clusters, centroids)
       new_clusters = assign_clusters(dataset, new_centroids)
-      run(dataset, new_centroids, new_clusters, count+1); 
+      run(dataset, new_centroids, new_clusters, count+1);
     else
       %{centroids: centroids, clustered_data: clusters}
     end
   end
-    
+
   defp init_centroids(dataset,k) when is_list(dataset) do
     #Select a random dataset point to act as the centroid
     shape = hd(dataset) |> length
-    for _ <- 1..k, do: for _ <- 1..shape, do: Utils.random_float(-100,100)
+    for _ <- 1..k, do: for _ <- 1..shape, do: MathUtils.random_float(-2,2)
   end
-    
+
   defp assign_clusters(dataset, centroids) do
-    for data <- dataset, do: 
-    {data,  centroids 
-      |> Enum.map(fn centroid -> Utils.euclidean_distance(centroid, data) end) 
-      |> Enum.with_index 
-      |> Enum.min 
+    for data <- dataset, do:
+    {data,  centroids
+      |> Enum.map(fn centroid -> MathUtils.euclidean_distance(centroid, data) end)
+      |> Enum.with_index
+      |> Enum.min
       |> elem(1)
     }
   end
@@ -109,9 +106,9 @@ defmodule KMeans do
       cluster = Enum.filter(labeled_dataset, fn data -> elem(data,1) == n end)
       unless cluster == [] do (
         initial_accumulator = List.duplicate(0, cluster |> hd |> elem(0) |> length)
-        Enum.reduce(cluster, initial_accumulator, fn datapoint, acc -> Utils.add(acc, elem(datapoint,0)) end) 
+        Enum.reduce(cluster, initial_accumulator, fn datapoint, acc -> VecOps.add(acc, elem(datapoint,0)) end)
                |> VecOps.scale(1/length(cluster))
-      ) 
+      )
     else
       labeled_centroids |> Enum.filter(fn cent -> elem(cent,1) == n end) |> hd |> elem(0)
     end)
@@ -125,15 +122,14 @@ defmodule KNeighbors do
   end
 
   def find_deviations(centroids) when is_list(centroids) do
-    cen_mins = for cen <- centroids, do: ( 
+    cen_mins = for cen <- centroids, do: (
       List.delete(centroids, cen)
-      |> Enum.map(fn cen_2 -> Utils.euclidean_distance(cen, cen_2) end)
+      |> Enum.map(fn cen_2 -> MathUtils.euclidean_distance(cen, cen_2) end)
       |> Enum.sort
       |> Enum.take(2)
       |> List.to_tuple
     )
-    IO.puts("Got here.")
-    cen_mins |> IO.inspect
+    cen_mins #|> IO.inspect
     for min <- cen_mins, do: :math.sqrt(elem(min,0)*elem(min,1))
   end
 end
@@ -146,7 +142,7 @@ defmodule RadialNeuron do
   end
 
   def activate(neuron, input)  do
-    Utils.gaussian(input, neuron.center, neuron.deviation)
+    NetUtils.gaussian(input, neuron.center, neuron.deviation)
   end
 end
 
@@ -154,13 +150,13 @@ defmodule OutputNeuron do
   defstruct [:id, :weights, :bias]
 
   def init(id, num_weights) when is_integer(num_weights) do
-    w = for _ <- 1..num_weights, do: Utils.random_float(-5,5)
-    b = Utils.random_float(0,1)
+    w = for _ <- 1..num_weights, do: MathUtils.random_float(-2,2)
+    b = MathUtils.random_float(0,1)
     %OutputNeuron{id: id, weights: w, bias: b}
   end
 
   def activate(neuron, input)  do
-    VecOps.dot(neuron.weights, input) |> (Kernel.+neuron.bias) |> Utils.linear
+    VecOps.dot(neuron.weights, input) |> (Kernel.+neuron.bias) |> NetUtils.linear |> Kernel.round()
   end
 
   def update_weights(neuron, input, exp_out, act_out, rate) do
@@ -177,18 +173,18 @@ defmodule RadialNet do
   defstruct [:radial_neurons, :output_neurons, learning_rate: 0.07]
 
   def init_radial_part(dataset, cluster_num) do
-    clusters = KMeans.run(dataset,cluster_num) |> IO.inspect
+    clusters = KMeans.run(dataset,cluster_num) #|> IO.inspect
     KNeighbors.run(clusters.centroids)
   end
 
   def init(radial_part, output_num) do
-    radial_part |> IO.inspect
+    radial_part # |> IO.inspect
     num_clusters = length(radial_part)
     radial_neurons = for id <- 0..num_clusters-1, do: (
     info = Enum.at(radial_part, id)
     %RadialNeuron{
-        id: id, 
-        center: info |> elem(0), 
+        id: id,
+        center: info |> elem(0),
         deviation: info |> elem(1)
       }
     )
@@ -202,7 +198,7 @@ defmodule RadialNet do
     )
   end
 
-  def predict(net, input) do 
+  def predict(net, input) do
     hidden_layer_output = activate_hidden_layer(net, input)
     for neuron <- net.output_neurons, do: OutputNeuron.activate(neuron, hidden_layer_output)
   end
@@ -210,14 +206,14 @@ defmodule RadialNet do
   def mean_square_error(net, dataset, example_count) do
     outputs = for example <- dataset, do: RadialNet.predict(net, elem(example,0))
     labels = Enum.map(dataset, fn example -> elem(example,1) end)
-    labeled_outputs = Enum.zip(labels,outputs) 
+    labeled_outputs = Enum.zip(labels,outputs)
     squared_errors = for {expected_values,actual_values} <- labeled_outputs, do: (
-      Enum.zip(expected_values,actual_values) 
-      |> Enum.map(fn {expected,actual} -> :math.pow(expected-actual,2) end) 
-      |> Enum.reduce(0, fn squared_value_error, acc -> squared_value_error + acc end) 
+      Enum.zip(expected_values,actual_values)
+      |> Enum.map(fn {expected,actual} -> :math.pow(expected-actual,2) end)
+      |> Enum.reduce(0, fn squared_value_error, acc -> squared_value_error + acc end)
       |> (Kernel./2)
     )
-    Enum.reduce(squared_errors, 0, fn error, acc -> (error+acc) end) 
+    Enum.reduce(squared_errors, 0, fn error, acc -> (error+acc) end)
     |> (Kernel./example_count)
   end
 
@@ -225,8 +221,9 @@ defmodule RadialNet do
     if(epochs == 0) do
       net
     else
-      _mse = RadialNet.mean_square_error(net, labeled_dataset, example_count) |> IO.inspect
-      updated_net = train_on_dataset(net, labeled_dataset)
+      #_mse = RadialNet.mean_square_error(net, labeled_dataset, example_count) |> IO.inspect
+      updated_net = train_on_dataset(net, labeled_dataset) #|> IO.inspect
+      #_ = IO.gets("Pausing")
       shuffled_dataset = Enum.shuffle(labeled_dataset)
       train_on_dataset(updated_net, shuffled_dataset, example_count, epochs-1)
     end
@@ -234,14 +231,14 @@ defmodule RadialNet do
 
   def train_on_dataset(net, labeled_dataset) when labeled_dataset == [] do
     net
-  end 
-   
+  end
+
   def train_on_dataset(net, labeled_dataset) do
     [example | remaining_data] = labeled_dataset
     updated_net = train_on_example(net, example)
     train_on_dataset(updated_net,remaining_data)
-  end 
-  
+  end
+
   def train_on_example(net, labeled_input) do
     {input, label} = labeled_input
     hidden_layer_output = activate_hidden_layer(net, input)
@@ -255,21 +252,39 @@ defmodule RadialNet do
   end
 
   def calculate_accuracy(net, labeled_dataset) do
-    data = Enum.map(labeled_dataset, fn item -> elem(item,0) end) 
+    data = Enum.map(labeled_dataset, fn item -> elem(item,0) end)
     labels = Enum.map(labeled_dataset, fn item -> elem(item,1) end)
-    outputs = Enum.map(data, fn datum -> RadialNet.predict(net, datum) end) 
-    zipped_outputs = Enum.zip(labels,outputs) |> IO.inspect 
-    hits = Enum.reduce(zipped_outputs, 0, fn {exp, act}, acc -> if exp == act do acc + 1 else acc + 0 end end)
-    hits/length(labeled_dataset)
+    outputs = Enum.map(data, fn datum -> RadialNet.predict(net, datum) end)
+    zipped_outputs = Enum.zip(labels,outputs) |> IO.inspect
+    Enum.reduce(zipped_outputs, 0, fn {exp, act}, acc -> if exp == act do acc + 1 else acc + 0 end end) #|> IO.inspect
+  end
+end
+
+defmodule DataUtils do
+  def separate_labels_and_data(labeled_dataset) do
+    data = Enum.map(labeled_dataset, fn item -> elem(item,0) end)
+    labels = Enum.map(labeled_dataset, fn item -> elem(item,1) end)
+    {data, labels}
+  end
+
+  def get_dataset(dataset_path) do
+    FileUtils.read_csv(dataset_path) |> FileUtils.parse_csv
+  end
+end
+
+defmodule ProgramUtils do
+
+  def run() do
+    dataset_path = "dataset.csv"
+    labeled_dataset = FileUtils.read_csv(dataset_path) |> FileUtils.parse_csv
+    dataset = Enum.map(labeled_dataset, fn item -> elem(item,0) end)
+    nn = RadialNet.init_radial_part(dataset, 20) |> RadialNet.init(6) |>  IO.inspect
+
+    RadialNet.train_on_dataset(nn,labeled_dataset,length(labeled_dataset),5000)
+    |> IO.inspect
+    |> RadialNet.calculate_accuracy(labeled_dataset) |> IO.inspect
   end
 
 end
 
-
-dataset_path = "dataset.csv"
-labeled_dataset = Utils.read_csv(dataset_path) |> Utils.parse_csv
-
-dataset = Enum.map(labeled_dataset, fn item -> elem(item,0) end)
-nn = RadialNet.init_radial_part(dataset, 6) |> RadialNet.init(6) |>  IO.inspect
-RadialNet.train_on_dataset(nn,labeled_dataset,length(labeled_dataset),1000)
-|> RadialNet.calculate_accuracy( labeled_dataset) |> IO.inspect
+ProgramUtils.run()
