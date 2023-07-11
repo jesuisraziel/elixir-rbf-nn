@@ -129,7 +129,6 @@ defmodule KNeighbors do
       |> Enum.take(2)
       |> List.to_tuple
     )
-    cen_mins #|> IO.inspect
     for min <- cen_mins, do: :math.sqrt(elem(min,0)*elem(min,1))
   end
 end
@@ -178,7 +177,6 @@ defmodule RadialNet do
   end
 
   def init(radial_part, output_num) do
-    radial_part # |> IO.inspect
     num_clusters = length(radial_part)
     radial_neurons = for id <- 0..num_clusters-1, do: (
     info = Enum.at(radial_part, id)
@@ -221,6 +219,7 @@ defmodule RadialNet do
     if(epochs == 0) do
       net
     else
+      IO.puts("Época #{to_string(epochs)}")
       #_mse = RadialNet.mean_square_error(net, labeled_dataset, example_count) |> IO.inspect
       updated_net = train_on_dataset(net, labeled_dataset) #|> IO.inspect
       #_ = IO.gets("Pausing")
@@ -256,7 +255,8 @@ defmodule RadialNet do
     labels = Enum.map(labeled_dataset, fn item -> elem(item,1) end)
     outputs = Enum.map(data, fn datum -> RadialNet.predict(net, datum) end)
     zipped_outputs = Enum.zip(labels,outputs) |> IO.inspect
-    Enum.reduce(zipped_outputs, 0, fn {exp, act}, acc -> if exp == act do acc + 1 else acc + 0 end end) #|> IO.inspect
+    hits = Enum.reduce(zipped_outputs, 0, fn {exp, act}, acc -> if exp == act do acc + 1 else acc + 0 end end) #|> IO.inspect
+    hits/length(labeled_dataset)
   end
 end
 
@@ -275,14 +275,18 @@ end
 defmodule ProgramUtils do
 
   def run() do
-    dataset_path = "dataset.csv"
-    labeled_dataset = FileUtils.read_csv(dataset_path) |> FileUtils.parse_csv
-    dataset = Enum.map(labeled_dataset, fn item -> elem(item,0) end)
-    nn = RadialNet.init_radial_part(dataset, 20) |> RadialNet.init(6) |>  IO.inspect
+    training_dataset_path = "big_train.csv"
+    testing_dataset_path = "big_test.csv"
 
-    RadialNet.train_on_dataset(nn,labeled_dataset,length(labeled_dataset),5000)
+    labeled_training_set = FileUtils.read_csv(training_dataset_path) |> FileUtils.parse_csv
+    labeled_testing_set = FileUtils.read_csv(testing_dataset_path) |> FileUtils.parse_csv
+
+    data = Enum.map(labeled_training_set, fn item -> elem(item,0) end)
+    nn = RadialNet.init_radial_part(data, 20) |> RadialNet.init(6) |>  IO.inspect
+
+    RadialNet.train_on_dataset(nn,labeled_training_set,length(labeled_training_set),1500)
     |> IO.inspect
-    |> RadialNet.calculate_accuracy(labeled_dataset) |> IO.inspect
+    |> RadialNet.calculate_accuracy(labeled_testing_set) |> IO.inspect
   end
 
 end
