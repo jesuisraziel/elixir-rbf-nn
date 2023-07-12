@@ -20,6 +20,15 @@ defmodule FileUtils do
 
     [{parsed_input, parsed_label}|parse_csv(rest)]
   end
+
+  def serialize(element, path) do
+    :erlang.term_to_binary(element) |> File.write(path)
+  end
+
+  def deserialize(path) do
+    File.read!(path) |> :erlang.binary_to_term
+  end
+
 end
 
 defmodule MathUtils do
@@ -49,6 +58,7 @@ defmodule NetUtils do
   def linear(input) do
     input
   end
+
 end
 
 defmodule VecOps do
@@ -274,21 +284,41 @@ end
 
 defmodule ProgramUtils do
 
-  def run() do
-    training_dataset_path = "big_train.csv"
-    testing_dataset_path = "big_test.csv"
-
-    labeled_training_set = FileUtils.read_csv(training_dataset_path) |> FileUtils.parse_csv
-    labeled_testing_set = FileUtils.read_csv(testing_dataset_path) |> FileUtils.parse_csv
-
+  def train(training_dataset_path) do
+    labeled_training_set = FileUtils.read_csv(training_dataset_path)
+    |> FileUtils.parse_csv
     data = Enum.map(labeled_training_set, fn item -> elem(item,0) end)
-    nn = RadialNet.init_radial_part(data, 20) |> RadialNet.init(6) |>  IO.inspect
 
-    RadialNet.train_on_dataset(nn,labeled_training_set,length(labeled_training_set),1500)
+    nn = RadialNet.init_radial_part(data, 20)
+    |> RadialNet.init(6)
     |> IO.inspect
-    |> RadialNet.calculate_accuracy(labeled_testing_set) |> IO.inspect
+
+    FileUtils.serialize(nn.radial_neurons,"hidden-layer")
+
+    nn |> RadialNet.train_on_dataset(labeled_training_set,length(labeled_training_set),1500)
+    FileUtils.serialize(nn,"neuralnet")
+
+    nn
   end
 
+  def load_hidden_and_train(path) do
+    hidden = FileUtils.deserialize("hidden-layer")
+    nn = RadialNet.init(hidden, 6)
+
+    training_dataset_path = "big_train.csv"
+    labeled_training_set = FileUtils.read_csv(training_dataset_path)
+
+    data = Enum.map(labeled_training_set, fn item -> elem(item,0) end)
+    nn |> RadialNet.train_on_dataset(labeled_training_set,length(labeled_training_set),1500)
+    FileUtils.serialize(nn,"neuralnet")
+    nn
+  end
+
+  def test(nn, testing_dataset_path) do
+    nn = FileUtils.deserialize(nn)
+    labeled_testing_set = FileUtils.read_csv(testing_dataset_path) |> FileUtils.parse_csv
+    RadialNet.calculate_accuracy(labeled_testing_set) |> IO.inspect
+  end
 end
 
-ProgramUtils.run()
+ProgramUtils.train("big_train.csv") |> ProgramUtils.test("big_test.csv")
