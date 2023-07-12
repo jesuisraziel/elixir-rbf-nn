@@ -293,10 +293,10 @@ defmodule ProgramUtils do
     |> RadialNet.init(6)
     |> IO.inspect
 
-    FileUtils.serialize(nn.radial_neurons,"hidden-layer")
+    #FileUtils.serialize(nn.radial_neurons,"hidden-layer")
 
     nn |> RadialNet.train_on_dataset(labeled_training_set,length(labeled_training_set),1500)
-    FileUtils.serialize(nn,"neuralnet")
+    #FileUtils.serialize(nn,"neuralnet")
 
     nn
   end
@@ -315,9 +315,8 @@ defmodule ProgramUtils do
   end
 
   def test(nn, testing_dataset_path) do
-    nn = FileUtils.deserialize(nn)
     labeled_testing_set = FileUtils.read_csv(testing_dataset_path) |> FileUtils.parse_csv
-    RadialNet.calculate_accuracy(labeled_testing_set) |> IO.inspect
+    RadialNet.calculate_accuracy(nn,labeled_testing_set) |> IO.inspect
   end
 end
 
