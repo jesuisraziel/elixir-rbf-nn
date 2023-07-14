@@ -219,7 +219,7 @@ defmodule RadialNet do
     if(epochs == 0) do
       net
     else
-      IO.puts("Época #{to_string(epochs)}")
+      IO.puts("Epoca #{to_string(epochs)}")
       #_mse = RadialNet.mean_square_error(net, labeled_dataset, example_count) |> IO.inspect
       updated_net = train_on_dataset(net, labeled_dataset) #|> IO.inspect
       #_ = IO.gets("Pausing")
@@ -255,8 +255,10 @@ defmodule RadialNet do
     labels = Enum.map(labeled_dataset, fn item -> elem(item,1) end)
     outputs = Enum.map(data, fn datum -> RadialNet.predict(net, datum) end)
     zipped_outputs = Enum.zip(labels,outputs) |> IO.inspect
+    example_count = length(labeled_dataset)
     hits = Enum.reduce(zipped_outputs, 0, fn {exp, act}, acc -> if exp == act do acc + 1 else acc + 0 end end) #|> IO.inspect
-    hits/length(labeled_dataset)
+    accuracy = hits/length(labeled_dataset)
+    %{example_count: example_count, hits: hits, accuracy: accuracy}
   end
 end
 
@@ -274,21 +276,82 @@ end
 
 defmodule ProgramUtils do
 
-  def run() do
-    training_dataset_path = "big_train.csv"
-    testing_dataset_path = "big_test.csv"
+  def serialize(element, path) do
+    bin = :erlang.term_to_binary(element)
+    File.write!(path, bin)
+  end
 
-    labeled_training_set = FileUtils.read_csv(training_dataset_path) |> FileUtils.parse_csv
-    labeled_testing_set = FileUtils.read_csv(testing_dataset_path) |> FileUtils.parse_csv
+  def deserialize(path) do
+    File.read!(path) |> :erlang.binary_to_term
+  end
+
+  def cluster(path) do
+    IO.puts("Reading training set for unsupervised learning...")
+    labeled_set = FileUtils.read_csv(path) |> FileUtils.parse_csv()
+    data = Enum.map(labeled_set, fn item -> elem(item,0) end)
+
+    IO.puts("Training Radial Network hidden layer...")
+    hidden_layer = RadialNet.init_radial_part(data, 20)
+
+    IO.puts("Exporting hidden layer to file...")
+    serialize(hidden_layer, "hidden_layer")
+
+    IO.puts("Done.")
+  end
+
+  def train(hidden_layer_path, training_set_path, epochs_string) do
+    IO.puts("Reading hidden layer from file.")
+    hidden_layer = ProgramUtils.deserialize(hidden_layer_path)
+
+    IO.puts("Reading training data from file.")
+    labeled_training_set = FileUtils.read_csv(training_set_path) |> FileUtils.parse_csv
+    net = RadialNet.init(hidden_layer, 6)
+    num_examples = length(labeled_training_set)
+    epochs = String.to_integer(epochs_string)
+
+    IO.puts("Training neural network for #{epochs} epochs...")
+    trained_net = RadialNet.train_on_dataset(net, labeled_training_set,num_examples, epochs)
+
+    IO.puts("Saving neural network to file...")
+    serialize(trained_net, "neural_net")
+
+    IO.puts("Done")
+  end
+
+  def test(network_path, testing_set_path) do
+    net = deserialize(network_path)
+    labeled_testing_set = FileUtils.read_csv(testing_set_path) |> FileUtils.parse_csv
+    results = RadialNet.calculate_accuracy(net,labeled_testing_set)
+    IO.puts("Network is #{results.accuracy}% accurate (#{results.hits} out of #{results.example_count} correct guesses)")
+  end
+
+  def run(training_set_path, testing_set_path) do
+
+    labeled_training_set = FileUtils.read_csv(training_set_path) |> FileUtils.parse_csv
+    labeled_testing_set = FileUtils.read_csv(testing_set_path) |> FileUtils.parse_csv
 
     data = Enum.map(labeled_training_set, fn item -> elem(item,0) end)
-    nn = RadialNet.init_radial_part(data, 20) |> RadialNet.init(6) |>  IO.inspect
-
-    RadialNet.train_on_dataset(nn,labeled_training_set,length(labeled_training_set),1500)
-    |> IO.inspect
-    |> RadialNet.calculate_accuracy(labeled_testing_set) |> IO.inspect
+    radial = RadialNet.init_radial_part(data, 20)
+    ProgramUtils.serialize(radial, "hidden_layer")
+    nn = RadialNet.init(radial,6)
+    trained_net = RadialNet.train_on_dataset(nn,labeled_training_set,length(labeled_training_set),1500)
+    ProgramUtils.serialize(trained_net, "neural_net")
+    #|> IO.inspect
+    RadialNet.calculate_accuracy(trained_net, labeled_testing_set) |> IO.inspect
+    IO.puts("Done")
   end
+
+
 
 end
 
-ProgramUtils.run()
+args = System.argv()
+
+case args do
+  ["cluster", training_set_path] -> ProgramUtils.cluster(training_set_path)
+  ["train", hidden_layer_path,training_set_path, epochs] -> ProgramUtils.train(hidden_layer_path, training_set_path, epochs)
+  ["test", network_path, testing_set_path] -> ProgramUtils.test(network_path, testing_set_path)
+  ["autotrain", train_path, test_path] -> ProgramUtils.run(train_path, test_path)
+  ["inspect", serialized_path] -> ProgramUtils.deserialize(serialized_path) |> IO.inspect
+  _ -> IO.inspect(args)
+end
