@@ -194,7 +194,7 @@ defmodule KMeans do
     run(dataset, initial_centroids,initial_clusters, 0)
   end
 
-  defp run(dataset,centroids,clusters, count) when is_list(centroids) do
+  def run(dataset,centroids,clusters, count) when is_list(centroids) do
     if(count < 1000) do
       new_centroids = update_centroids(clusters, centroids)
       new_clusters = assign_clusters(dataset, new_centroids)
@@ -211,7 +211,7 @@ defmodule KMeans do
 
     Returns a list of initial centroids.
   """
-  defp init_centroids(dataset,k) when is_list(dataset) do
+  def init_centroids(dataset,k) when is_list(dataset) do
     #Select a random dataset point to act as the centroid
     shape = hd(dataset) |> length
     for _ <- 1..k, do: (
@@ -226,7 +226,7 @@ defmodule KMeans do
     Returns a list of tuples containing each datapoint, as well as its assigned cluster.
   """
 
-  defp assign_clusters(dataset, centroids) do
+  def assign_clusters(dataset, centroids) do
     for data <- dataset, do:
     {data,  centroids
       |> Enum.map(fn centroid -> MathUtils.euclidean_distance(centroid, data) end)
@@ -244,7 +244,7 @@ defmodule KMeans do
 
   Returns the list of updated centroids.
 """
-  defp update_centroids(labeled_dataset, centroids) do
+  def update_centroids(labeled_dataset, centroids) do
     labeled_centroids = centroids |> Enum.with_index
     k = length(labeled_centroids)
     for n <- 0..k-1, do: (
@@ -378,7 +378,7 @@ defmodule RadialNet do
     its deviation.
   """
   def init_radial_part(dataset, cluster_num) do
-    clusters = KMeans.run(dataset,cluster_num) #|> IO.inspect
+    clusters = KMeans.run(dataset,cluster_num)
     KNeighbors.run(clusters.centroids)
   end
 
@@ -506,7 +506,6 @@ defmodule ProgramUtils do
     Returns a human-readable response.
   """
   def interpret(output) do
-    output |> IO.inspect
     sections = ["Alteraciones severas en la interacción social recíproca: ",
     "Patrón / es de intereses restringidos y absorbentes: ",
     "Imposición de rutinas, rituales e intereses: ",
@@ -612,5 +611,5 @@ case args do
   ["--accuracy", network_path, testing_set_path] -> ProgramUtils.calculate_accuracy(network_path, testing_set_path)
   ["--test", network_path, example_path] -> ProgramUtils.process(network_path, example_path)
   ["--help"] -> ProgramUtils.display_help()
-  _ -> IO.puts("Unrecognized command. Try running the script with the --help option flag.")
+  _ -> IO.puts("Unrecognized command. Try running the script with the --help flag.")
 end
